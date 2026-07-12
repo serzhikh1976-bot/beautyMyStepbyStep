@@ -148,11 +148,14 @@ export function registerProfileHandlers(
     const selected = (currentServices as Array<{ service_id: number }> ?? [])
       .map(r => r.service_id);
 
-    const keyboard = new InlineKeyboard();
-    for (const s of services) {
-      keyboard.text(`${selected.includes(s.id) ? '✅' : '☐'} ${s.name}`, `svc:${s.id}`).row();
-    }
-    keyboard.text('✔️ Готово', 'svc:done');
+const keyboard = new InlineKeyboard();
+const PER_ROW = 3;
+services.forEach((s, i) => {
+  keyboard.text(`${selected.includes(s.id) ? '✅' : '☐'} ${s.name}`, `svc:${s.id}`);
+  if ((i + 1) % PER_ROW === 0) keyboard.row();
+});
+if (services.length % PER_ROW !== 0) keyboard.row();
+keyboard.text('✔️ Готово', 'svc:done');
 
     await ctx.reply('🔧 Выберите ваши услуги:', { reply_markup: keyboard.toJSON() });
 

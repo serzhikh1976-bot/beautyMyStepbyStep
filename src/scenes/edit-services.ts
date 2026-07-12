@@ -30,9 +30,12 @@ async function getMasterServices(telegramId: number, botId: number): Promise<num
 
 function buildServicesKeyboard(services: Service[], selected: number[]): InlineKeyboard {
   const kb = new InlineKeyboard();
-  for (const s of services) {
-    kb.text(`${selected.includes(s.id) ? '✅' : '☐'} ${s.name}`, `svc:${s.id}`).row();
-  }
+  const PER_ROW = 3;
+  services.forEach((s, i) => {
+    kb.text(`${selected.includes(s.id) ? '✅' : '☐'} ${s.name}`, `svc:${s.id}`);
+    if ((i + 1) % PER_ROW === 0) kb.row();
+  });
+  if (services.length % PER_ROW !== 0) kb.row();
   kb.text('✔️ Готово', 'svc:done');
   return kb;
 }

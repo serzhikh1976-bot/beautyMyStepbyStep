@@ -109,9 +109,12 @@ async function getMasterIdsByService(botId: number, serviceId: number): Promise<
 
 function buildKeyboard(items: { id: number; name: string }[], prefix: string): InlineKeyboard {
   const kb = new InlineKeyboard();
-  for (const item of items) {
-    kb.text(item.name, `${prefix}:${item.id}`).row();
-  }
+  const PER_ROW = 2;
+  items.forEach((item, i) => {
+    kb.text(item.name, `${prefix}:${item.id}`);
+    if ((i + 1) % PER_ROW === 0) kb.row();
+  });
+  if (items.length % PER_ROW !== 0) kb.row();
   return kb;
 }
 
