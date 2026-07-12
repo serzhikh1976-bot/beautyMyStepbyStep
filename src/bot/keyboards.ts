@@ -4,6 +4,8 @@ import { InlineKeyboard, ReplyKeyboard } from 'ultra-telegram-framework';
 export const masterKeyboard = new ReplyKeyboard()
   .text('👤 Мой профиль')
   .text('⚙️ Редактировать')
+  .row()
+  .text('📂 Открытые чаты')
   .resized(true);
 
   

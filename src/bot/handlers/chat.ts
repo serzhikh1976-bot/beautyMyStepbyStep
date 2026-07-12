@@ -5,6 +5,18 @@ import { escapeHtml } from '../../shared/telegram-html.js';
 import { clearButtons, sendTracked } from '../helpers.js';
 import { endChatKeyboard, masterActionsKeyboard } from '../keyboards.js';
 
+// Человекочитаемое "давно ли было последнее сообщение" для списка открытых чатов
+function formatElapsed(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return 'только что';
+  if (min < 60) return `${min} мин назад`;
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return `${hours} ч назад`;
+  const days = Math.floor(hours / 24);
+  return `${days} дн назад`;
+}
+
 export function registerChatHandlers(
   bot: TelegramBot<SceneContext>,
   record: BotRecord
@@ -415,6 +427,151 @@ export function registerChatHandlers(
     } catch (err) {
       // Клиент мог заблокировать бота — бан всё равно записан
       console.error(`[${record.city_name}] ban_client_confirm: ошибка уведомления clientId=${clientId}:`, err);
+    }
+  });
+
+  // ── Список открытых чатов мастера ────────────────────────────────────────
+
+  bot.match('📂 Открытые чаты', async (ctx) => {
+    const masterId = ctx.message && 'from' in ctx.message ? ctx.message.from?.id : undefined;
+    if (!masterId) return;
+
+    const { data: chats, error } = await db
+      .from('active_chats')
+      .select('id, client_id, updated_at')
+      .eq('master_id', masterId)
+      .eq('bot_id', record.id)
+      .eq('status', 'active')
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      console.error(`[${record.city_name}] Ошибка выборки открытых чатов:`, error.message);
+      await ctx.reply('⚠️ Не удалось загрузить список чатов.');
+      return;
+    }
+
+    if (!chats || chats.length === 0) {
+      await ctx.reply('📂 У вас сейчас нет открытых чатов.');
+      return;
+    }
+
+    for (const chat of chats as Array<{ id: string; client_id: number; updated_at: string }>) {
+      let clientName = 'Клиент';
+      try {
+        const clientChat = await bot.getChat(chat.client_id);
+        if (clientChat.first_name) clientName = clientChat.first_name;
+      } catch {
+        // клиент мог заблокировать бота — оставляем дефолтное имя
+      }
+
+      const { data: lastLog } = await db
+        .from('chat_message_log')
+        .select('text, photo_ids')
+        .eq('chat_id', chat.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const logRaw = lastLog as { text: string | null; photo_ids: string[] | null } | null;
+      let preview = 'нет сообщений';
+      if (logRaw?.text) {
+        preview = logRaw.text.length > 60 ? `${logRaw.text.slice(0, 60)}…` : logRaw.text;
+      } else if (logRaw?.photo_ids && logRaw.photo_ids.length > 0) {
+        preview = '📸 Фото';
+      }
+
+      const keyboard = new InlineKeyboard().text('✍️ Написать', `resurface_chat:${chat.id}`);
+
+      try {
+        await ctx.reply(
+          `👤 <b>${escapeHtml(clientName)}</b>\n` +
+          `💬 ${escapeHtml(preview)}\n` +
+          `🕐 ${formatElapsed(chat.updated_at)}`,
+          { parse_mode: 'HTML', reply_markup: keyboard.toJSON() }
+        );
+      } catch (err) {
+        console.error(`[${record.city_name}] Ошибка вывода чата в списке chatId=${chat.id}:`, err);
+      }
+    }
+  });
+
+  // Кнопка «✍️ Написать» из списка открытых чатов — пересылаем мастеру
+  // свежую копию последнего сообщения клиента и регистрируем её в
+  // chat_messages, чтобы Reply на неё сразу правильно замаршрутизировался
+  // (та же механика, что и у обычных уведомлений в routeChatMessage).
+  bot.action(/^resurface_chat:/, async (ctx) => {
+    const userId = ctx.callbackQuery!.from.id;
+    const chatId = (ctx.callbackQuery!.data ?? '').replace('resurface_chat:', '');
+    await ctx.answerCallbackQuery();
+
+    const { data: chat } = await db
+      .from('active_chats')
+      .select('client_id, master_id, status')
+      .eq('id', chatId)
+      .eq('bot_id', record.id)
+      .maybeSingle();
+
+    if (!chat || (chat as Record<string, unknown>).status !== 'active') {
+      await clearButtons(bot, ctx);
+      await ctx.reply('Этот диалог уже закрыт.');
+      return;
+    }
+
+    const raw = chat as Record<string, unknown>;
+
+    // Кнопку могли увидеть только у мастера этого чата, но на всякий случай
+    if (userId !== raw.master_id) return;
+
+    const clientId = raw.client_id as number;
+
+    let clientName = 'Клиент';
+    try {
+      const clientChat = await bot.getChat(clientId);
+      if (clientChat.first_name) clientName = clientChat.first_name;
+    } catch {
+      // клиент мог заблокировать бота — оставляем дефолтное имя
+    }
+
+    const { data: lastLog } = await db
+      .from('chat_message_log')
+      .select('text, photo_ids')
+      .eq('chat_id', chatId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const logRaw = lastLog as { text: string | null; photo_ids: string[] | null } | null;
+
+    await clearButtons(bot, ctx);
+
+    try {
+      const sentMsg = await sendTracked(bot, chatId, 'master', userId, () => {
+        if (logRaw?.photo_ids && logRaw.photo_ids.length > 0) {
+          return bot.sendPhoto(
+            userId,
+            logRaw.photo_ids[logRaw.photo_ids.length - 1],
+            {
+              caption:
+                `📸 <b>${escapeHtml(clientName)}</b>\n\n` +
+                `↩️ Ответьте Reply на это сообщение, чтобы написать клиенту.`,
+              parse_mode: 'HTML',
+              reply_markup: masterActionsKeyboard(chatId).toJSON()
+            }
+          );
+        }
+        return bot.sendMessage(
+          userId,
+          `💬 <b>${escapeHtml(clientName)}:</b> ${escapeHtml(logRaw?.text ?? '(нет текста)')}\n\n` +
+            `↩️ Ответьте Reply на это сообщение, чтобы написать клиенту.`,
+          {
+            parse_mode: 'HTML',
+            reply_markup: masterActionsKeyboard(chatId).toJSON()
+          }
+        );
+      });
+      await db.from('chat_messages').insert({ chat_id: chatId, message_id: sentMsg.message_id });
+    } catch (err) {
+      console.error(`[${record.city_name}] resurface_chat: ошибка masterId=${userId}:`, err);
     }
   });
 
