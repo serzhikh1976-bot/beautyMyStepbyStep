@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { buildServer } from './server.js';
+import { startAutoCloseChatsJob } from './jobs/auto-close-chats.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 
@@ -10,6 +11,7 @@ try {
   console.log(`🚀 Сервер запущен на порту ${PORT}`);
   console.log(`📡 Вебхуки: POST /webhook/:uuid`);
   console.log(`❤️  Health: GET /`);
+  startAutoCloseChatsJob();
 } catch (err) {
   console.error('Ошибка запуска:', err);
   process.exit(1);

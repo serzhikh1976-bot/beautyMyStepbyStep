@@ -241,6 +241,90 @@ export function registerChatHandlers(
     }
   });
 
+  // Продление чата по кнопке из предупреждения об автозакрытии.
+  // Разрешено только один раз за всю жизнь чата — извлекаем и проверяем extended.
+  bot.action(/^extend_chat:/, async (ctx) => {
+    const userId = ctx.callbackQuery!.from.id;
+    const chatId = (ctx.callbackQuery!.data ?? '').replace('extend_chat:', '');
+    await ctx.answerCallbackQuery();
+
+    const { data: chat } = await db
+      .from('active_chats')
+      .select('client_id, master_id, status, extended')
+      .eq('id', chatId)
+      .eq('bot_id', record.id)
+      .maybeSingle();
+
+    if (!chat || (chat as Record<string, unknown>).status !== 'active') {
+      await clearButtons(bot, ctx);
+      return ctx.reply('Этот диалог уже закрыт.');
+    }
+
+    const raw = chat as Record<string, unknown>;
+
+    // Только участник чата может продлить
+    if (userId !== raw.client_id && userId !== raw.master_id) {
+      return;
+    }
+
+    if (raw.extended) {
+      await clearButtons(bot, ctx);
+      return ctx.reply('Этот диалог уже продлевали — повторное продление недоступно.');
+    }
+
+    await clearButtons(bot, ctx);
+
+    await db
+      .from('active_chats')
+      .update({
+        updated_at: new Date().toISOString(),
+        warning_sent: false,
+        extended: true
+      })
+      .eq('id', chatId)
+      .eq('bot_id', record.id);
+
+    const clientId = raw.client_id as number;
+    const masterId = raw.master_id as number;
+
+    // Имя мастера берём из анкеты, имя клиента — из Telegram (в БД не хранится)
+    const { data: masterProfile } = await db
+      .from('masters_profiles')
+      .select('name')
+      .eq('master_id', masterId)
+      .eq('bot_id', record.id)
+      .maybeSingle();
+    const masterName = (masterProfile as { name: string } | null)?.name ?? 'мастером';
+
+    let clientName = 'клиентом';
+    try {
+      const clientChat = await bot.getChat(clientId);
+      if (clientChat.first_name) clientName = clientChat.first_name;
+    } catch {
+      // клиент мог заблокировать бота — оставляем дефолтное имя
+    }
+
+    try {
+      await ctx.reply('✅ Вы продлили диалог ещё на 3 часа.');
+    } catch (err) {
+      console.error(`[${record.city_name}] extend_chat: ошибка reply userId=${userId}:`, err);
+    }
+
+    const otherId = userId === clientId ? masterId : clientId;
+    const clickerName = userId === clientId ? clientName : masterName;
+
+    try {
+      await bot.sendMessage(
+        otherId,
+        `✅ Диалог продлён ещё на 3 часа собеседником (${escapeHtml(clickerName)}).`,
+        { parse_mode: 'HTML' }
+      );
+    } catch (err) {
+      // Второй участник мог заблокировать бота — не критично, продление уже сохранено
+      console.error(`[${record.city_name}] extend_chat: ошибка уведомления otherId=${otherId}:`, err);
+    }
+  });
+
   // Бан клиента мастером
   // Шаг 1: просим подтверждение — действие серьёзное и необратимое
   bot.action(/^ban_client:/, async (ctx) => {
@@ -410,7 +494,7 @@ export function registerChatHandlers(
         }
       }
 
-      await db.from('active_chats').update({ updated_at: new Date().toISOString() }).eq('id', raw.id);
+      await db.from('active_chats').update({ updated_at: new Date().toISOString(), warning_sent: false }).eq('id', raw.id);
       return true;
     }
 
@@ -478,7 +562,7 @@ export function registerChatHandlers(
           }
         }
 
-        await db.from('active_chats').update({ updated_at: new Date().toISOString() }).eq('id', targetChat.id);
+        await db.from('active_chats').update({ updated_at: new Date().toISOString(), warning_sent: false }).eq('id', targetChat.id);
         return true;
       }
       return true; // в чате но не знаем кому — не показываем fallback
@@ -545,7 +629,7 @@ export function registerChatHandlers(
           )
         );
         await db.from('chat_message_log').insert({ chat_id: found.id, sender_id: userId, text });
-        await db.from('active_chats').update({ updated_at: new Date().toISOString() }).eq('id', found.id);
+        await db.from('active_chats').update({ updated_at: new Date().toISOString(), warning_sent: false }).eq('id', found.id);
         return;
       }
     }
