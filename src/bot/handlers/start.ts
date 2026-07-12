@@ -24,11 +24,28 @@ export function registerStartHandlers(
         .maybeSingle();
 
       if (data?.role === 'master') {
-        return ctx.replyWithKeyboard(
-          `👋 С возвращением в ${record.city_name}!`,
-          masterKeyboard
-        );
-      }
+  // Роль сохраняется сразу при выборе, а профиль — только в конце визарда.
+  // Если пользователь бросил регистрацию на середине, роль в БД уже
+  // 'master', но masters_profiles ещё нет — без этой проверки он
+  // навсегда застревал бы на "с возвращением" без входа в визард.
+  const { data: profile } = await db
+    .from('masters_profiles')
+    .select('master_id')
+    .eq('bot_id', record.id)
+    .eq('master_id', telegramId)
+    .maybeSingle();
+
+  if (!profile) {
+    await ctx.reply('👋 Похоже, вы не завершили регистрацию. Продолжим!\n\nКак вас зовут? Введите ваше имя:');
+    ctx.scene.enter('master_registration');
+    return;
+  }
+
+  return ctx.replyWithKeyboard(
+    `👋 С возвращением в ${record.city_name}!`,
+    masterKeyboard
+  );
+}
 
       if (data?.role === 'client') {
         const clientKeyboard = new ReplyKeyboard()

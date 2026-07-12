@@ -36,6 +36,14 @@ export function createBot(record: BotRecord): TelegramBot<SceneContext> {
     }
   }));
 
+ bot.use(async (ctx, next) => {
+    const text = ctx.message && 'text' in ctx.message ? ctx.message.text : undefined;
+    if (text === '/start' && ctx.session && '__scene' in ctx.session) {
+      delete ctx.session.__scene;
+    }
+    return next();
+  });
+
   // Сцены
   const stage = new Stage<SceneContext>([
     createMasterRegistrationScene(record.id),
