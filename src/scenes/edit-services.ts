@@ -1,10 +1,9 @@
-import { WizardScene, InlineKeyboard, ReplyKeyboard } from 'ultra-telegram-framework';
+import { WizardScene, InlineKeyboard } from 'ultra-telegram-framework';
 import type { SceneContext } from 'ultra-telegram-framework';
 import { db } from '../db.js';
+import { masterKeyboard } from '../bot/keyboards.js';
 
 interface Service { id: number; name: string; }
-
-const masterKeyboard = new ReplyKeyboard().text('👤 Мой профиль').resized(true);
 
 async function getBotServices(botId: number): Promise<Service[]> {
   const { data, error } = await db

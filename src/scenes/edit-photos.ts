@@ -1,8 +1,7 @@
-import { WizardScene, ReplyKeyboard } from 'ultra-telegram-framework';
+import { WizardScene } from 'ultra-telegram-framework';
 import type { SceneContext } from 'ultra-telegram-framework';
 import { db } from '../db.js';
-
-const masterKeyboard = new ReplyKeyboard().text('👤 Мой профиль').resized(true);
+import { masterKeyboard } from '../bot/keyboards.js';
 
 export function createEditPhotosScene(botId: number) {
   return new WizardScene<SceneContext>(

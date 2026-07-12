@@ -3,7 +3,10 @@ import { InlineKeyboard, ReplyKeyboard } from 'ultra-telegram-framework';
 // Reply-клавиатура для мастера
 export const masterKeyboard = new ReplyKeyboard()
   .text('👤 Мой профиль')
+  .text('⚙️ Редактировать')
   .resized(true);
+
+  
 
 // Кнопка «Завершить диалог» — прикрепляется к КАЖДОМУ сообщению в чат-тоннеле,
 // а не только к первому уведомлению, чтобы при нескольких активных чатах

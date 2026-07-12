@@ -1,6 +1,7 @@
-import { WizardScene, InlineKeyboard, ReplyKeyboard } from 'ultra-telegram-framework';
+import { WizardScene, InlineKeyboard } from 'ultra-telegram-framework';
 import type { SceneContext } from 'ultra-telegram-framework';
 import { db } from '../db.js';
+import { masterKeyboard } from '../bot/keyboards.js';
 
 interface Service { id: number; name: string; }
 interface District { id: number; name: string; }
@@ -271,10 +272,6 @@ export function createMasterRegistrationScene(botId: number) {
         .filter(s => selectedServices.includes(s.id))
         .map(s => s.name)
         .join(', ');
-
-      const masterKeyboard = new ReplyKeyboard()
-        .text('👤 Мой профиль')
-        .resized(true);
 
       try {
         await ctx.replyWithKeyboard(
