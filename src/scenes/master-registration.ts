@@ -280,7 +280,7 @@ export function createMasterRegistrationScene(botId: number) {
           `💼 ${serviceNames}\n` +
           `💰 от ${state.price_from} грн\n` +
           `📸 Фото: ${photos.length}\n\n` +
-          `✅ Триал активен на 30 дней.\n` +
+          // `✅ Триал активен на 30 дней.\n` +
           `Клиенты уже могут вас найти!`,
           masterKeyboard
         );
