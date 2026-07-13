@@ -6,6 +6,7 @@ export const masterKeyboard = new ReplyKeyboard()
   .text('⚙️ Редактировать')
   .row()
   .text('📂 Открытые чаты')
+  .text('💵 Прайс-лист')
   .resized(true);
 
   

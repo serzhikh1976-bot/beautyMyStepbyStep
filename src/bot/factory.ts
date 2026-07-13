@@ -12,10 +12,12 @@ import { createEditDistrictScene } from '../scenes/edit-district.js';
 import { createEditServicesScene } from '../scenes/edit-services.js';
 import { createEditPhotosScene } from '../scenes/edit-photos.js';
 import { createClientSearchScene } from '../scenes/client-search.js';
+import { createAddPriceItemScene } from '../scenes/add-price-item.js';
 import { registerStartHandlers } from './handlers/start.js';
 import { registerSearchHandlers } from './handlers/search.js';
 import { registerChatHandlers } from './handlers/chat.js';
 import { registerProfileHandlers } from './handlers/profile.js';
+import { registerPriceListHandlers } from './handlers/price-list.js';
 
 export function createBot(record: BotRecord): TelegramBot<SceneContext> {
   const bot = new TelegramBot<SceneContext>(new NodeApiClient(record.token));
@@ -45,19 +47,22 @@ export function createBot(record: BotRecord): TelegramBot<SceneContext> {
   });
 
   // Сцены
+// Сцены
   const stage = new Stage<SceneContext>([
     createMasterRegistrationScene(record.id),
     createEditPriceScene(record.id),
     createEditDistrictScene(record.id),
     createEditServicesScene(record.id),
     createEditPhotosScene(record.id),
-    createClientSearchScene(record.id)
+    createClientSearchScene(record.id),
+    createAddPriceItemScene(record.id)
   ]);
   bot.use(stage.middleware());
 
   registerStartHandlers(bot, record);
   registerSearchHandlers(bot, record);
   registerProfileHandlers(bot, record); // до chat — чтобы bot.match('👤 Мой профиль') не перехватывался bot.on('text')
+  registerPriceListHandlers(bot, record); // тоже до chat — та же причина, bot.match('💵 Прайс-лист')
   registerChatHandlers(bot, record);
 
   return bot;
