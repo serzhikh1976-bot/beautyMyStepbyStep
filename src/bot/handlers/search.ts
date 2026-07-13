@@ -189,6 +189,9 @@ export function registerSearchHandlers(
       text += `<b>${escapeHtml(serviceName)}</b>\n${lines.join('\n')}\n\n`;
     }
 
-    await ctx.reply(text.trim(), { parse_mode: 'HTML' });
+    const keyboard = new InlineKeyboard()
+      .text('💬 Написать мастеру', `chat:${masterId}`);
+
+    await ctx.reply(text.trim(), { parse_mode: 'HTML', reply_markup: keyboard.toJSON() });
   });
 }
