@@ -36,7 +36,7 @@ export async function showMasterProfile(
     .maybeSingle();
 
   if (!data) {
-    await ctx.reply("Профиль не найден. Пройдите регистрацию заново.");
+    await ctx.reply("Профиль не найден. Пройдите регистрацию заново используйте /start");
     return;
   }
 
@@ -112,7 +112,7 @@ export function registerProfileHandlers(
       .maybeSingle();
 
     if (!data) {
-      await ctx.reply("Профиль не найден. Пройдите регистрацию заново.");
+      await ctx.reply("Профиль не найден. Пройдите регистрацию заново используйте /start");
       return;
     }
 
