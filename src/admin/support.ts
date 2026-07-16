@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { db } from '../db.js';
 import { escapeHtml, layout, requireAuth } from './shared.js';
+import { getBot } from '../bot/index.js';
 
 async function handleSupportList(request: FastifyRequest, reply: FastifyReply) {
   if (!requireAuth(request, reply)) return;
@@ -76,12 +77,12 @@ async function handleSupportList(request: FastifyRequest, reply: FastifyReply) {
 
   const { data: repliesRaw } = await db
     .from('support_replies')
-    .select('support_message_id, reply_text, created_at')
+    .select('support_message_id, reply_text, created_at, admin_telegram_id')
     .in('support_message_id', threadIds)
     .order('created_at', { ascending: true });
 
-  const repliesByThread = new Map<number, Array<{ reply_text: string; created_at: string }>>();
-  for (const r of (repliesRaw as Array<{ support_message_id: number; reply_text: string; created_at: string }>) ?? []) {
+  const repliesByThread = new Map<number, Array<{ reply_text: string; created_at: string; admin_telegram_id: number }>>();
+  for (const r of (repliesRaw as Array<{ support_message_id: number; reply_text: string; created_at: string; admin_telegram_id: number }>) ?? []) {
     if (!repliesByThread.has(r.support_message_id)) repliesByThread.set(r.support_message_id, []);
     repliesByThread.get(r.support_message_id)!.push(r);
   }
@@ -108,7 +109,7 @@ async function handleSupportList(request: FastifyRequest, reply: FastifyReply) {
             .map(
               (r) => `
         <div class="support-reply">
-          <div class="support-reply-meta">↩️ Ответ · ${new Date(r.created_at).toLocaleString('ru-RU')}</div>
+          <div class="support-reply-meta">${r.admin_telegram_id === 0 ? '🌐 Ответ из вебадминки' : '↩️ Ответ'} · ${new Date(r.created_at).toLocaleString('ru-RU')}</div>
           <div>${escapeHtml(r.reply_text)}</div>
         </div>`
             )
@@ -123,6 +124,10 @@ async function handleSupportList(request: FastifyRequest, reply: FastifyReply) {
       </div>
       <div class="support-question">💬 ${escapeHtml(t.message_text)}</div>
       ${repliesHtml}
+      <form method="POST" action="/admin/support/${t.id}/reply" style="margin-top:12px;display:flex;gap:8px;">
+        <input type="text" name="reply_text" placeholder="Ответить мастеру..." required style="flex:1;" />
+        <button type="submit">Отправить</button>
+      </form>
     </div>`;
     })
     .join('');
@@ -132,6 +137,60 @@ async function handleSupportList(request: FastifyRequest, reply: FastifyReply) {
   reply.type('text/html').send(layout('Поддержка', body, { activePath: '/admin/support' }));
 }
 
+async function handleSupportReply(request: FastifyRequest, reply: FastifyReply) {
+  if (!requireAuth(request, reply)) return;
+
+  const { threadId } = request.params as { threadId: string };
+  const body = request.body as { reply_text?: string };
+  const replyText = (body.reply_text ?? '').trim();
+
+  if (!replyText) {
+    return reply.redirect('/admin/support');
+  }
+
+  const { data: thread } = await db
+    .from('support_messages')
+    .select('id, bot_id, master_id')
+    .eq('id', Number(threadId))
+    .maybeSingle();
+
+  if (!thread) {
+    return reply.redirect('/admin/support');
+  }
+
+  const raw = thread as { id: number; bot_id: number; master_id: number };
+
+  const { data: botRow } = await db.from('bots').select('number').eq('id', raw.bot_id).maybeSingle();
+  const uuid = (botRow as { number: string } | null)?.number;
+
+  if (uuid) {
+    const cityBot = await getBot(uuid);
+    if (cityBot) {
+      try {
+        await cityBot.sendMessage(
+          raw.master_id,
+          `💬 <b>Ответ от поддержки:</b>\n\n${escapeHtml(replyText)}`,
+          { parse_mode: 'HTML' }
+        );
+      } catch (err) {
+        console.error('[AdminSupport] Ошибка отправки ответа мастеру:', err);
+      }
+    }
+  }
+
+  // admin_telegram_id: 0 — маркер "ответ отправлен из вебадминки", а не
+  // через Reply в Telegram-боте (для веб-сессии нет привязки к конкретному
+  // Telegram-аккаунту, только общий пароль на панель)
+  await db.from('support_replies').insert({
+    support_message_id: raw.id,
+    reply_text: replyText,
+    admin_telegram_id: 0
+  });
+
+  reply.redirect('/admin/support');
+}
+
 export function registerAdminSupportRoutes(app: FastifyInstance): void {
   app.get('/admin/support', handleSupportList);
+  app.post('/admin/support/:threadId/reply', handleSupportReply);
 }
