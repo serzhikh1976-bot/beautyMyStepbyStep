@@ -58,8 +58,9 @@ async function resolveRecipients(
 async function handleBroadcastForm(request: FastifyRequest, reply: FastifyReply) {
   if (!requireAuth(request, reply)) return;
 
-  const query = request.query as { city?: string };
+  const query = request.query as { city?: string; service?: string };
   const cityId = query.city ? Number(query.city) : null;
+  const serviceId = query.service ? Number(query.service) : null;
 
   const [{ data: citiesRaw }, { data: servicesRaw }] = await Promise.all([
     db.from('bots').select('id, city_name').order('city_name'),
@@ -71,12 +72,20 @@ async function handleBroadcastForm(request: FastifyRequest, reply: FastifyReply)
 
   let mastersInCity: Array<{ master_id: number; name: string }> = [];
   if (cityId) {
-    const { data } = await db
+    let mastersQuery = db
       .from('masters_profiles')
-      .select('master_id, name')
+      .select(
+        serviceId
+          ? 'master_id, name, master_services!inner(service_id)'
+          : 'master_id, name'
+      )
       .eq('bot_id', cityId)
       .order('name');
-    mastersInCity = (data as Array<{ master_id: number; name: string }>) ?? [];
+
+    if (serviceId) mastersQuery = mastersQuery.eq('master_services.service_id', serviceId);
+
+    const { data } = await mastersQuery;
+    mastersInCity = (data as unknown as Array<{ master_id: number; name: string }>) ?? [];
   }
 
   const cityOptions = ['<option value="">Все города</option>']
@@ -84,7 +93,7 @@ async function handleBroadcastForm(request: FastifyRequest, reply: FastifyReply)
     .join('');
 
   const serviceOptions = ['<option value="">Все услуги</option>']
-    .concat(services.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`))
+    .concat(services.map((s) => `<option value="${s.id}" ${serviceId === s.id ? 'selected' : ''}>${escapeHtml(s.name)}</option>`))
     .join('');
 
   const masterOptions = ['<option value="">Не выбирать конкретного</option>']
@@ -102,14 +111,15 @@ async function handleBroadcastForm(request: FastifyRequest, reply: FastifyReply)
         <label>Город
           <select name="city" onchange="this.form.submit()">${cityOptions}</select>
         </label>
+        <label>Группа по услуге
+          <select name="service" onchange="this.form.submit()">${serviceOptions}</select>
+        </label>
       </form>
 
       <form method="POST" action="/admin/broadcast/preview">
         <input type="hidden" name="city" value="${cityId ?? ''}" />
+        <input type="hidden" name="service" value="${serviceId ?? ''}" />
         <div style="display:flex;flex-direction:column;gap:14px;max-width:480px;">
-          <label>Группа по услуге
-            <select name="service">${serviceOptions}</select>
-          </label>
           <label>Конкретный мастер
             <select name="master" ${cityId ? '' : 'disabled'}>${masterOptions}</select>
             ${masterFieldNote}
