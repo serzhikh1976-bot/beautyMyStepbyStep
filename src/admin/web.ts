@@ -3,8 +3,12 @@ import cookiePlugin from '@fastify/cookie';
 import formbodyPlugin from '@fastify/formbody';
 import { db } from '../db.js';
 import { escapeHtml, isAuthed, layout, loginPage, requireAuth, safeEqual, SESSION_COOKIE } from './shared.js';
+
 import { registerAdminChatsRoutes } from './chats.js';
 import { registerAdminSettingsRoutes } from './settings.js';
+import { registerAdminSupportRoutes } from './support.js';
+import { registerAdminBroadcastRoutes } from './broadcast.js';
+
 
 interface MasterRow {
   masterId: number;
@@ -231,6 +235,8 @@ export async function registerAdminWeb(app: FastifyInstance): Promise<void> {
     reply.type('text/html').send(layout('Мастера', mastersPage(cities, sorted, state), { activePath: '/admin' }));
   });
 
-  registerAdminChatsRoutes(app);
+registerAdminChatsRoutes(app);
   registerAdminSettingsRoutes(app);
+  registerAdminSupportRoutes(app);
+  registerAdminBroadcastRoutes(app);
 }

@@ -11,13 +11,14 @@ import { createEditPriceScene } from '../scenes/edit-price.js';
 import { createEditDistrictScene } from '../scenes/edit-district.js';
 import { createEditServicesScene } from '../scenes/edit-services.js';
 import { createEditPhotosScene } from '../scenes/edit-photos.js';
-import { createClientSearchScene } from '../scenes/client-search.js';
-import { createAddPriceItemScene } from '../scenes/add-price-item.js';
+import { createClientSearchScene } from '../scenes/client-search.js';import { createAddPriceItemScene } from '../scenes/add-price-item.js';
+import { createSupportMessageScene } from '../scenes/support-message.js';
 import { registerStartHandlers } from './handlers/start.js';
 import { registerSearchHandlers } from './handlers/search.js';
 import { registerChatHandlers } from './handlers/chat.js';
 import { registerProfileHandlers } from './handlers/profile.js';
 import { registerPriceListHandlers } from './handlers/price-list.js';
+import { registerSupportHandlers } from './handlers/support.js';
 
 export function createBot(record: BotRecord): TelegramBot<SceneContext> {
   const bot = new TelegramBot<SceneContext>(new NodeApiClient(record.token));
@@ -54,8 +55,9 @@ export function createBot(record: BotRecord): TelegramBot<SceneContext> {
     createEditDistrictScene(record.id),
     createEditServicesScene(record.id),
     createEditPhotosScene(record.id),
-    createClientSearchScene(record.id),
-    createAddPriceItemScene(record.id)
+createClientSearchScene(record.id),
+    createAddPriceItemScene(record.id),
+    createSupportMessageScene(record.id)
   ]);
   bot.use(stage.middleware());
 
@@ -63,6 +65,7 @@ export function createBot(record: BotRecord): TelegramBot<SceneContext> {
   registerSearchHandlers(bot, record);
   registerProfileHandlers(bot, record); // до chat — чтобы bot.match('👤 Мой профиль') не перехватывался bot.on('text')
   registerPriceListHandlers(bot, record); // тоже до chat — та же причина, bot.match('💵 Прайс-лист')
+  registerSupportHandlers(bot, record); // тоже до chat — bot.match('🆘 Поддержка')
   registerChatHandlers(bot, record);
 
   return bot;

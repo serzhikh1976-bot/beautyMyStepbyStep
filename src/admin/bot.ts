@@ -6,19 +6,25 @@ import {
 } from 'ultra-telegram-framework';
 import { db } from '../db.js';
 import { escapeHtml } from '../shared/telegram-html.js';
+import { getBot } from '../bot/index.js';
+
+interface AdminContext extends Context {
+  isSuperAdmin?: boolean;
+  managedCities?: Array<{ id: number; city_name: string }>;
+}
 
 // ── Singleton ────────────────────────────────────────────────────────────
 // В отличие от city-ботов (bot-manager.ts), этот бот не в таблице `bots` —
 // он один на всю систему, конфиг только через .env.
 
-let adminBot: TelegramBot<Context> | null = null;
+let adminBot: TelegramBot<AdminContext> | null = null;
 let warnedMissingConfig = false;
 
 export function getAdminBotUuid(): string | null {
   return process.env.ADMIN_BOT_UUID ?? null;
 }
 
-export function getAdminBot(): TelegramBot<Context> | null {
+export function getAdminBot(): TelegramBot<AdminContext> | null {
   const token = process.env.ADMIN_BOT_TOKEN;
   const superAdminId = process.env.SUPER_ADMIN_ID;
 
@@ -39,40 +45,133 @@ export function getAdminBot(): TelegramBot<Context> | null {
 
 // ── Бот ──────────────────────────────────────────────────────────────────
 
-function createAdminBot(token: string, superAdminId: number): TelegramBot<Context> {
-  const bot = new TelegramBot<Context>(new NodeApiClient(token));
+function createAdminBot(token: string, superAdminId: number): TelegramBot<AdminContext> {
+  const bot = new TelegramBot<AdminContext>(new NodeApiClient(token));
 
   bot.catch((err) => {
     console.error('[AdminBot] Ошибка:', err);
   });
 
-  // Пускаем только суперадмина — всех остальных молча игнорируем
+  // Пускаем суперадмина (полный доступ к дашборду) и менеджеров городов
+  // (только для ответов в поддержку — их manager_telegram_id должен быть
+  // прописан хотя бы у одного города в таблице bots). Всех остальных
+  // молча игнорируем.
   bot.use(async (ctx, next) => {
     const userId = ctx.callbackQuery?.from.id
       ?? (ctx.message && 'from' in ctx.message ? ctx.message.from?.id : undefined);
 
-    if (userId !== superAdminId) return;
+    if (!userId) return;
+
+    if (userId === superAdminId) {
+      ctx.isSuperAdmin = true;
+      await next();
+      return;
+    }
+
+    const { data } = await db
+      .from('bots')
+      .select('id, city_name')
+      .eq('manager_telegram_id', userId);
+
+    const managedCities = (data as Array<{ id: number; city_name: string }>) ?? [];
+    if (managedCities.length === 0) return; // не суперадмин и не менеджер — игнор
+
+    ctx.isSuperAdmin = false;
+    ctx.managedCities = managedCities;
     await next();
   });
 
   bot.command('start', async (ctx) => {
-    await sendDashboard(ctx);
+    if (ctx.isSuperAdmin) {
+      await sendDashboard(ctx);
+    } else {
+      const cities = ctx.managedCities?.map((c) => c.city_name).join(', ') ?? '';
+      await ctx.reply(
+        `👋 Вы менеджер по городам: <b>${escapeHtml(cities)}</b>.\n\n` +
+          `Сюда будут приходить сообщения от мастеров в поддержку — просто отвечайте Reply на них, чтобы ответить мастеру.`,
+        { parse_mode: 'HTML' }
+      );
+    }
   });
 
   bot.action('admin_dashboard', async (ctx) => {
     await ctx.answerCallbackQuery();
-    await sendDashboard(ctx);
+    if (ctx.isSuperAdmin) await sendDashboard(ctx);
   });
 
   bot.action(/^admin_city:/, async (ctx) => {
+    if (!ctx.isSuperAdmin) return;
     const botId = parseInt((ctx.callbackQuery!.data ?? '').replace('admin_city:', ''));
     await ctx.answerCallbackQuery();
     await sendCityDetails(ctx, botId);
   });
 
   bot.action('admin_chats', async (ctx) => {
+    if (!ctx.isSuperAdmin) return;
     await ctx.answerCallbackQuery();
     await sendActiveChats(ctx);
+  });
+
+  // Ответ менеджера/суперадмина мастеру — по Reply на сообщение поддержки
+  bot.on('text', async (ctx) => {
+    const msg = ctx.message as unknown as Record<string, unknown>;
+    const replyToId = (msg?.reply_to_message as Record<string, unknown> | undefined)
+      ?.message_id as number | undefined;
+
+    if (!replyToId) return;
+
+const { data: supportMsg } = await db
+      .from('support_messages')
+      .select('id, bot_id, master_id')
+      .eq('admin_message_id', replyToId)
+      .maybeSingle();
+
+    if (!supportMsg) return;
+
+    const raw = supportMsg as { id: number; bot_id: number; master_id: number };
+
+    // Менеджер может отвечать только за свои города (суперадмин — за любые)
+    if (!ctx.isSuperAdmin && !ctx.managedCities?.some((c) => c.id === raw.bot_id)) {
+      await ctx.reply('⚠️ Это сообщение не из вашего города.');
+      return;
+    }
+
+    const { data: botRow } = await db
+      .from('bots')
+      .select('number')
+      .eq('id', raw.bot_id)
+      .maybeSingle();
+
+    const uuid = (botRow as { number: string } | null)?.number;
+    if (!uuid) return;
+
+    const cityBot = await getBot(uuid);
+    if (!cityBot) {
+      await ctx.reply('⚠️ Не удалось найти бота этого города.');
+      return;
+    }
+
+    try {
+      await cityBot.sendMessage(
+        raw.master_id,
+        `💬 <b>Ответ от поддержки:</b>\n\n${escapeHtml(ctx.text ?? '')}`,
+        { parse_mode: 'HTML' }
+      );
+
+      const replierId = ctx.callbackQuery?.from.id
+        ?? (ctx.message && 'from' in ctx.message ? ctx.message.from?.id : undefined);
+
+      await db.from('support_replies').insert({
+        support_message_id: raw.id,
+        reply_text: ctx.text ?? '',
+        admin_telegram_id: replierId ?? 0
+      });
+
+      await ctx.reply('✅ Отправлено мастеру.');
+    } catch (err) {
+      console.error('[AdminBot] Ошибка отправки ответа мастеру:', err);
+      await ctx.reply('❌ Не удалось отправить — мастер мог заблокировать бота.');
+    }
   });
 
   return bot;
@@ -80,7 +179,7 @@ function createAdminBot(token: string, superAdminId: number): TelegramBot<Contex
 
 // ── Дашборд: сводка по всем городам ────────────────────────────────────
 
-async function sendDashboard(ctx: Context): Promise<void> {
+async function sendDashboard(ctx: AdminContext): Promise<void> {
   const { data: botsRaw, error: botsError } = await db
     .from('bots')
     .select('id, city_name, is_active')
@@ -151,7 +250,7 @@ async function sendDashboard(ctx: Context): Promise<void> {
 
 // ── Детали по одному городу ─────────────────────────────────────────────
 
-async function sendCityDetails(ctx: Context, botId: number): Promise<void> {
+async function sendCityDetails(ctx: AdminContext, botId: number): Promise<void> {
   const { data: cityRaw } = await db
     .from('bots')
     .select('city_name, is_active')
@@ -197,7 +296,7 @@ async function sendCityDetails(ctx: Context, botId: number): Promise<void> {
 
 // ── Все активные чаты по всем городам ───────────────────────────────────
 
-async function sendActiveChats(ctx: Context): Promise<void> {
+async function sendActiveChats(ctx: AdminContext): Promise<void> {
   const { data: chatsRaw } = await db
     .from('active_chats')
     .select('client_id, master_id, updated_at, bots(city_name)')

@@ -45,6 +45,8 @@ const NAV_ITEMS: Array<{ href: string; label: string }> = [
   { href: '/admin/chats', label: 'Чаты' },
   { href: '/admin/clients', label: 'Клиенты' },
   { href: '/admin/bans', label: 'Баны' },
+  { href: '/admin/support', label: 'Поддержка' },
+  { href: '/admin/broadcast', label: 'Рассылка' },
   { href: '/admin/bots', label: 'Боты' },
   { href: '/admin/services', label: 'Услуги' },
   { href: '/admin/districts', label: 'Районы' }
@@ -97,6 +99,16 @@ export function layout(
   .badge.active { background: #dcfce7; color: #166534; }
   .badge.paused { background: #fee2e2; color: #991b1b; }
   .badge.finished { background: #e5e7eb; color: #374151; }
+
+
+.support-thread-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; font-size: 15px; }
+  .support-thread-date { color: #888; font-size: 13px; font-weight: normal; }
+  .support-question { background: #f3f4f6; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; }
+  .support-reply { background: #eef2ff; border-radius: 8px; padding: 10px 14px; margin-top: 8px; }
+  .support-reply-meta { color: #6366f1; font-size: 12px; margin-bottom: 4px; }
+  .support-reply-empty { background: #fef3c7; color: #92400e; font-size: 14px; }
+
+
   .empty { color: #888; padding: 40px; text-align: center; }
   .login-box { max-width: 360px; margin: 80px auto; }
   .error { color: #991b1b; font-size: 14px; margin-top: 8px; }

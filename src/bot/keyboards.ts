@@ -7,8 +7,9 @@ export const masterKeyboard = new ReplyKeyboard()
   .row()
   .text('📂 Открытые чаты')
   .text('💵 Прайс-лист')
+  .row()
+  .text('🆘 Поддержка')
   .resized(true);
-
   
 
 // Кнопка «Завершить диалог» — прикрепляется к КАЖДОМУ сообщению в чат-тоннеле,

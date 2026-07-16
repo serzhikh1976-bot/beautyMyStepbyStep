@@ -28,7 +28,12 @@ async function handleBotsList(request: FastifyRequest, reply: FastifyReply) {
     <tr>
       <td>${escapeHtml(b.city_name as string)}</td>
       <td><code>${escapeHtml(b.number as string)}</code></td>
-      <td>${b.manager_telegram_id ? `<code>${b.manager_telegram_id}</code>` : '—'}</td>
+     <td>
+        <form method="POST" action="/admin/bots/${b.id}/manager" class="filters" style="gap:6px;">
+          <input type="text" name="manager_telegram_id" value="${b.manager_telegram_id ?? ''}" placeholder="Telegram ID" style="width:140px;" />
+          <button type="submit">Сохранить</button>
+        </form>
+      </td>
       <td><span class="badge ${isActive ? 'active' : 'paused'}">${isActive ? 'Активен' : 'Выключен'}</span></td>
       <td>
         <form method="POST" action="/admin/bots/${b.id}/toggle">
@@ -124,6 +129,29 @@ async function handleBotCreate(request: FastifyRequest, reply: FastifyReply) {
 
   if (webhookNote) {
     return reply.type('text/html').send(layout('Боты', `${webhookNote}<a class="link" href="/admin/bots">← К списку ботов</a>`, { activePath: '/admin/bots' }));
+  }
+
+  reply.redirect('/admin/bots');
+}
+
+async function handleBotManagerUpdate(request: FastifyRequest, reply: FastifyReply) {
+  if (!requireAuth(request, reply)) return;
+
+  const { botId } = request.params as { botId: string };
+  const body = request.body as { manager_telegram_id?: string };
+  const raw = body.manager_telegram_id?.trim();
+  const managerTelegramId = raw ? Number(raw) : null;
+
+  if (raw && (isNaN(managerTelegramId as number) || (managerTelegramId as number) <= 0)) {
+    return reply.type('text/html').send(
+      layout('Боты', '<div class="card">⚠️ Telegram ID должен быть положительным числом. <a class="link" href="/admin/bots">Назад</a></div>', { activePath: '/admin/bots' })
+    );
+  }
+
+  const { error } = await db.from('bots').update({ manager_telegram_id: managerTelegramId }).eq('id', Number(botId));
+
+  if (error) {
+    console.error('[AdminSettings] Ошибка обновления менеджера:', error.message);
   }
 
   reply.redirect('/admin/bots');
@@ -516,6 +544,7 @@ export function registerAdminSettingsRoutes(app: FastifyInstance): void {
   app.get('/admin/bots', handleBotsList);
   app.post('/admin/bots', handleBotCreate);
   app.post('/admin/bots/:botId/toggle', handleBotToggle);
+  app.post('/admin/bots/:botId/manager', handleBotManagerUpdate);
 
   app.get('/admin/services', handleServicesList);
   app.post('/admin/services', handleServiceCreate);
