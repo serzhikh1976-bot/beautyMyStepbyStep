@@ -1,8 +1,8 @@
-import { InlineKeyboard, ReplyKeyboard } from 'ultra-telegram-framework';
+import { InlineKeyboard } from 'ultra-telegram-framework';
 import type { TelegramBot, SceneContext } from 'ultra-telegram-framework';
 import { db, type BotRecord } from '../../db.js';
 import { clearButtons } from '../helpers.js';
-import { masterKeyboard } from '../keyboards.js';
+import { masterKeyboard, clientKeyboard } from '../keyboards.js';
 import { saveRole } from '../roles.js';
 
 export function registerStartHandlers(
@@ -48,10 +48,6 @@ export function registerStartHandlers(
 }
 
       if (data?.role === 'client') {
-        const clientKeyboard = new ReplyKeyboard()
-          .text('🔍 Найти мастера')
-          .resized(true);
-
         return ctx.replyWithKeyboard(
           `👋 С возвращением в ${record.city_name}!`,
           clientKeyboard
@@ -78,10 +74,6 @@ export function registerStartHandlers(
       await saveRole(record.id, userId, 'client');
       await ctx.answerCallbackQuery();
       await clearButtons(bot, ctx);
-
-      const clientKeyboard = new ReplyKeyboard()
-        .text('🔍 Найти мастера')
-        .resized(true);
 
       await ctx.replyWithKeyboard(
         '✅ Вы зарегистрированы как клиент.\n\nНажмите кнопку чтобы найти мастера:',

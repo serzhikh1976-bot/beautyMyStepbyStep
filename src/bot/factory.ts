@@ -19,6 +19,7 @@ import { registerChatHandlers } from './handlers/chat.js';
 import { registerProfileHandlers } from './handlers/profile.js';
 import { registerPriceListHandlers } from './handlers/price-list.js';
 import { registerSupportHandlers } from './handlers/support.js';
+import { registerRoleSwitchHandlers } from './handlers/role-switch.js';
 
 export function createBot(record: BotRecord): TelegramBot<SceneContext> {
   const bot = new TelegramBot<SceneContext>(new NodeApiClient(record.token));
@@ -41,7 +42,7 @@ export function createBot(record: BotRecord): TelegramBot<SceneContext> {
 
  bot.use(async (ctx, next) => {
     const text = ctx.message && 'text' in ctx.message ? ctx.message.text : undefined;
-    if (text === '/start' && ctx.session && '__scene' in ctx.session) {
+    if ((text === '/start' || text === '🔄 Сменить роль') && ctx.session && '__scene' in ctx.session) {
       delete ctx.session.__scene;
     }
     return next();
@@ -66,6 +67,7 @@ createClientSearchScene(record.id),
   registerProfileHandlers(bot, record); // до chat — чтобы bot.match('👤 Мой профиль') не перехватывался bot.on('text')
   registerPriceListHandlers(bot, record); // тоже до chat — та же причина, bot.match('💵 Прайс-лист')
   registerSupportHandlers(bot, record); // тоже до chat — bot.match('🆘 Поддержка')
+  registerRoleSwitchHandlers(bot, record); // тоже до chat — bot.match('🔄 Сменить роль')
   registerChatHandlers(bot, record);
 
   return bot;
