@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { db } from '../db.js';
 import { escapeHtml, layout, requireAuth } from './shared.js';
 import { getBot } from '../bot/index.js';
+import { masterKeyboard } from '../bot/keyboards.js';
 
 interface Recipient {
   master_id: number;
@@ -214,7 +215,10 @@ async function handleBroadcastSend(request: FastifyRequest, reply: FastifyReply)
 
     for (const r of list) {
       try {
-        await cityBot.sendMessage(r.master_id, `📢 <b>Сообщение от администрации:</b>\n\n${escapeHtml(message)}`, { parse_mode: 'HTML' });
+        await cityBot.sendMessage(r.master_id, `📢 <b>Сообщение от администрации:</b>\n\n${escapeHtml(message)}`, {
+          parse_mode: 'HTML',
+          reply_markup: masterKeyboard.toJSON()
+        });
         sent++;
       } catch (err) {
         console.error(`[AdminBroadcast] Не удалось отправить master_id=${r.master_id}:`, err);
