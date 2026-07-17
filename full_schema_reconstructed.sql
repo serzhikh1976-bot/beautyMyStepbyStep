@@ -201,3 +201,26 @@ create table public.broadcast_messages (
   constraint broadcast_messages_order_id_fkey foreign KEY (order_id) references orders (id) on delete CASCADE
 ) TABLESPACE pg_default;
 create index IF not exists broadcast_messages_order_id_master_id_idx on public.broadcast_messages using btree (order_id, master_id) TABLESPACE pg_default;
+
+create table public.support_messages (
+  id bigserial not null,
+  admin_message_id bigint not null,
+  bot_id bigint not null,
+  master_id bigint not null,
+  message_text text not null default ''::text,
+  created_at timestamp with time zone not null default now(),
+  constraint support_messages_pkey primary key (id),
+  constraint support_messages_bot_id_fkey foreign KEY (bot_id) references bots (id) on delete CASCADE
+) TABLESPACE pg_default;
+create index IF not exists idx_support_messages_lookup on public.support_messages using btree (admin_message_id) TABLESPACE pg_default;
+
+create table public.support_replies (
+  id bigserial not null,
+  support_message_id bigint not null,
+  reply_text text not null,
+  admin_telegram_id bigint not null,
+  created_at timestamp with time zone not null default now(),
+  constraint support_replies_pkey primary key (id),
+  constraint support_replies_support_message_id_fkey foreign KEY (support_message_id) references support_messages (id) on delete CASCADE
+) TABLESPACE pg_default;
+create index IF not exists idx_support_replies_lookup on public.support_replies using btree (support_message_id) TABLESPACE pg_default;
