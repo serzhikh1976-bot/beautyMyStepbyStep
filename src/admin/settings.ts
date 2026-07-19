@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { db } from '../db.js';
 import { escapeHtml, layout, requireAuth } from './shared.js';
 import { invalidateBot } from '../bot/index.js';
+import { ensureCommunityTopic } from '../community/topics.js';
 
 // ── Боты ─────────────────────────────────────────────────────────────────
 
@@ -90,17 +91,38 @@ async function handleBotCreate(request: FastifyRequest, reply: FastifyReply) {
 
   const number = randomUUID();
 
-  const { error: insertError } = await db.from('bots').insert({
-    number,
-    token,
-    city_name: cityName,
-    is_active: true,
-    manager_telegram_id: managerTelegramId
-  });
+  const { data: insertedBot, error: insertError } = await db
+    .from('bots')
+    .insert({
+      number,
+      token,
+      city_name: cityName,
+      is_active: true,
+      manager_telegram_id: managerTelegramId
+    })
+    .select('id')
+    .single();
 
   if (insertError) {
     console.error('[AdminSettings] Ошибка создания бота:', insertError.message);
     return reply.type('text/html').send(layout('Боты', `<div class="card">⚠️ Не удалось создать бота: ${escapeHtml(insertError.message)}. <a class="link" href="/admin/bots">Назад</a></div>`, { activePath: '/admin/bots' }));
+  }
+
+  // Сразу создаём тему в community-группе (если она настроена через
+  // COMMUNITY_CHAT_ID). Ошибка тут не должна блокировать создание бота —
+  // тема всё равно досоздастся бэкфиллом при следующем рестарте сервера.
+  try {
+    await ensureCommunityTopic({
+      id: (insertedBot as { id: number }).id,
+      number,
+      token,
+      city_name: cityName,
+      is_active: true,
+      manager_telegram_id: managerTelegramId,
+      community_topic_id: null
+    });
+  } catch (err) {
+    console.error('[AdminSettings] Ошибка создания темы сообщества:', err);
   }
 
   // Сразу регистрируем вебхук у Telegram, чтобы не гонять register-webhooks руками

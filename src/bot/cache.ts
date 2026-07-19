@@ -10,7 +10,7 @@ export async function getBot(uuid: string): Promise<TelegramBot<SceneContext> | 
 
   const { data, error } = await db
     .from('bots')
-    .select('id, number, token, city_name, is_active, manager_telegram_id')
+    .select('id, number, token, city_name, is_active, manager_telegram_id, community_topic_id')
     .eq('number', uuid)
     .eq('is_active', true)
     .maybeSingle();

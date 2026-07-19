@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { buildServer } from './server.js';
 import { startAutoCloseChatsJob } from './jobs/auto-close-chats.js';
+import { backfillCommunityTopics } from './community/topics.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 
@@ -12,6 +13,7 @@ try {
   console.log(`📡 Вебхуки: POST /webhook/:uuid`);
   console.log(`❤️  Health: GET /`);
   startAutoCloseChatsJob();
+  backfillCommunityTopics().catch(err => console.error('[Community] Ошибка бэкфилла тем:', err));
 } catch (err) {
   console.error('Ошибка запуска:', err);
   process.exit(1);

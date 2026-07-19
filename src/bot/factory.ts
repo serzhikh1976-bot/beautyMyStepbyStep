@@ -20,6 +20,7 @@ import { registerProfileHandlers } from './handlers/profile.js';
 import { registerPriceListHandlers } from './handlers/price-list.js';
 import { registerSupportHandlers } from './handlers/support.js';
 import { registerRoleSwitchHandlers } from './handlers/role-switch.js';
+import { registerCommunityHandlers } from './handlers/community.js';
 
 export function createBot(record: BotRecord): TelegramBot<SceneContext> {
   const bot = new TelegramBot<SceneContext>(new NodeApiClient(record.token));
@@ -68,6 +69,7 @@ createClientSearchScene(record.id),
   registerPriceListHandlers(bot, record); // тоже до chat — та же причина, bot.match('💵 Прайс-лист')
   registerSupportHandlers(bot, record); // тоже до chat — bot.match('🆘 Поддержка')
   registerRoleSwitchHandlers(bot, record); // тоже до chat — bot.match('🔄 Сменить роль')
+  registerCommunityHandlers(bot, record); // тоже до chat — bot.match('👥 Сообщество')
   registerChatHandlers(bot, record);
 
   return bot;

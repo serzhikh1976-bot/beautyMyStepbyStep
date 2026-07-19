@@ -111,7 +111,7 @@ export function registerChatHandlers(
     try {
       await sendTracked(bot, chatId, 'client', clientId, () =>
         ctx.reply(
-          `💬 Чат с мастером <b>${escapeHtml(masterName)}</b> открыт!\n\nПишите ваш вопрос:`,
+          `💬 Чат с мастером <b>${escapeHtml(masterName)}</b> открыт! Поле ввода активно!`,
           { parse_mode: 'HTML', reply_markup: endChatKeyboard(chatId).toJSON() }
         )
       );
@@ -124,7 +124,7 @@ export function registerChatHandlers(
       const notifMsg = await sendTracked(bot, chatId, 'master', masterId, () =>
         bot.sendMessage(
           masterId,
-          `💬 Новый клиент хочет с вами пообщаться!\n\nОтвечайте Reply на сообщения клиента чтобы он вас видел.`,
+          `💬 Новый клиент хочет с вами пообщаться!\nТап на сообщение и воспользуйтесь Ответить/Reply`,
           { reply_markup: masterKeyboardWithBan.toJSON() }
         )
       );
