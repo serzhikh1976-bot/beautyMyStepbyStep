@@ -18,4 +18,5 @@ export interface BotRecord {
   city_name: string;
   is_active: boolean;
   manager_telegram_id: number | null;
+  community_topic_id?: number | null;
 }

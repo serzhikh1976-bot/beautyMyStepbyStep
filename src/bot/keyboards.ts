@@ -10,6 +10,8 @@ export const masterKeyboard = new ReplyKeyboard()
   .row()
   .text('🆘 Поддержка')
   .text('🔄 Сменить роль')
+  .row()
+  .text('👥 Сообщество')
   .resized(true);
 
 // Reply-клавиатура для клиента
@@ -17,6 +19,8 @@ export const clientKeyboard = new ReplyKeyboard()
   .text('🔍 Найти мастера')
   .row()
   .text('🔄 Сменить роль')
+  .row()
+  .text('👥 Сообщество')
   .resized(true);
 
 // Кнопка «Завершить диалог» — прикрепляется к КАЖДОМУ сообщению в чат-тоннеле,
