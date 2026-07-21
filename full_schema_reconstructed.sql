@@ -15,6 +15,7 @@ create table public.bots (
   city_name text not null,
   is_active boolean not null default true,
   manager_telegram_id bigint null,
+  community_topic_id bigint null,
   constraint bots_pkey primary key (id),
   constraint bots_number_key unique (number),
   constraint bots_token_key unique (token)
@@ -88,6 +89,7 @@ create table public.master_services (
   master_id bigint not null,
   service_id integer not null,
   bot_id bigint not null,
+  duration_minutes integer not null default 60,
   constraint master_services_pkey primary key (master_id, bot_id, service_id),
   constraint master_services_master_id_bot_id_fkey foreign KEY (master_id, bot_id) references masters_profiles (master_id, bot_id) on delete CASCADE,
   constraint master_services_service_id_fkey foreign KEY (service_id) references services (id) on delete CASCADE
@@ -202,25 +204,54 @@ create table public.broadcast_messages (
 ) TABLESPACE pg_default;
 create index IF not exists broadcast_messages_order_id_master_id_idx on public.broadcast_messages using btree (order_id, master_id) TABLESPACE pg_default;
 
+-- Поддержка мастер → менеджер/суперадмин через admin-бот
 create table public.support_messages (
-  id bigserial not null,
-  admin_message_id bigint not null,
-  bot_id bigint not null,
-  master_id bigint not null,
-  message_text text not null default ''::text,
-  created_at timestamp with time zone not null default now(),
-  constraint support_messages_pkey primary key (id),
-  constraint support_messages_bot_id_fkey foreign KEY (bot_id) references bots (id) on delete CASCADE
-) TABLESPACE pg_default;
-create index IF not exists idx_support_messages_lookup on public.support_messages using btree (admin_message_id) TABLESPACE pg_default;
+  id                bigserial primary key,
+  admin_message_id  bigint not null,
+  bot_id            bigint not null references bots(id) on delete cascade,
+  master_id         bigint not null,
+  message_text      text not null default '',
+  created_at        timestamptz not null default now()
+);
+create index IF not exists idx_support_messages_lookup on public.support_messages using btree (admin_message_id);
 
 create table public.support_replies (
-  id bigserial not null,
-  support_message_id bigint not null,
-  reply_text text not null,
-  admin_telegram_id bigint not null,
-  created_at timestamp with time zone not null default now(),
-  constraint support_replies_pkey primary key (id),
-  constraint support_replies_support_message_id_fkey foreign KEY (support_message_id) references support_messages (id) on delete CASCADE
-) TABLESPACE pg_default;
-create index IF not exists idx_support_replies_lookup on public.support_replies using btree (support_message_id) TABLESPACE pg_default;
+  id                  bigserial primary key,
+  support_message_id  bigint not null references support_messages(id) on delete cascade,
+  reply_text          text not null,
+  admin_telegram_id   bigint not null,
+  created_at          timestamptz not null default now()
+);
+create index IF not exists idx_support_replies_lookup on public.support_replies using btree (support_message_id);
+
+-- Система записи клиентов к мастеру (календарь с самообслуживанием)
+create table public.master_schedule_settings (
+  master_id bigint not null,
+  bot_id bigint not null,
+  working_days smallint[] not null default '{1,2,3,4,5}',
+  start_time time not null default '09:00',
+  end_time time not null default '18:00',
+  reminder_master_minutes_before integer not null default 60,
+  reminder_client_minutes_before integer not null default 120,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint master_schedule_settings_pkey primary key (master_id, bot_id),
+  constraint master_schedule_settings_master_bot_fkey foreign key (master_id, bot_id) references masters_profiles (master_id, bot_id) on delete cascade
+);
+
+create table public.appointments (
+  id uuid primary key default gen_random_uuid(),
+  bot_id bigint not null references bots(id) on delete cascade,
+  master_id bigint not null,
+  client_id bigint not null,
+  service_id integer not null references services(id),
+  slot_start timestamptz not null,
+  slot_end timestamptz not null,
+  status text not null default 'confirmed' check (status in ('confirmed','cancelled','completed')),
+  reminder_master_sent boolean not null default false,
+  reminder_client_sent boolean not null default false,
+  created_at timestamptz not null default now(),
+  constraint appointments_master_bot_fkey foreign key (master_id, bot_id) references masters_profiles (master_id, bot_id) on delete cascade
+);
+create index IF not exists idx_appointments_master_slot on public.appointments using btree (master_id, bot_id, slot_start) where (status = 'confirmed'::text);
+create index IF not exists idx_appointments_client on public.appointments using btree (client_id, bot_id) where (status = 'confirmed'::text);

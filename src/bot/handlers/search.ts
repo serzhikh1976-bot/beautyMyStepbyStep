@@ -113,7 +113,9 @@ export function registerSearchHandlers(
 
     const keyboard = new InlineKeyboard()
       .text('💬 Написать мастеру', `chat:${masterId}`)
-      .text('💰 Смотреть цены', `price_view:${masterId}`);
+      .text('💰 Смотреть цены', `price_view:${masterId}`)
+      .row()
+      .text('📅 Записаться', `book:${masterId}`);
 
     const photos = raw.photos as string[];
 

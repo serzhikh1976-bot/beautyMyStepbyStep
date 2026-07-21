@@ -12,11 +12,13 @@ export const masterKeyboard = new ReplyKeyboard()
   .text('🔄 Сменить роль')
   .row()
   .text('👥 Сообщество')
+  .text('📅 Календарь')
   .resized(true);
 
 // Reply-клавиатура для клиента
 export const clientKeyboard = new ReplyKeyboard()
   .text('🔍 Найти мастера')
+  .text('📅 Мои записи')
   .row()
   .text('🔄 Сменить роль')
   .row()
