@@ -142,6 +142,7 @@ export function registerScheduleHandlers(
     }
 
     let text = '📋 <b>Ваши предстоящие записи</b>\n\n';
+    const keyboard = new InlineKeyboard();
     for (const r of rows) {
       let clientName = 'Клиент';
       try {
@@ -157,8 +158,9 @@ export function registerScheduleHandlers(
       const timeLabel = `${String(kyiv.getUTCHours()).padStart(2, '0')}:${String(kyiv.getUTCMinutes()).padStart(2, '0')}`;
 
       text += `🗓 ${dateLabel} в ${timeLabel} — ${escapeHtml(clientName)}, ${escapeHtml(r.services?.name ?? '—')}\n`;
+      keyboard.text(`❌ Отменить ${dateLabel} ${timeLabel}`, `appt_cancel:${r.id}`).row();
     }
 
-    await ctx.reply(text, { parse_mode: 'HTML' });
+    await ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard.toJSON() });
   });
 }

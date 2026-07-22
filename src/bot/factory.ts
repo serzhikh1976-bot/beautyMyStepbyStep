@@ -46,9 +46,22 @@ export function createBot(record: BotRecord): TelegramBot<SceneContext> {
     }
   }));
 
- bot.use(async (ctx, next) => {
+  bot.use(async (ctx, next) => {
     const text = ctx.message && 'text' in ctx.message ? ctx.message.text : undefined;
-    const escapeTriggers = ['/start', '🔄 Сменить роль', '📅 Календарь', '📅 Мои записи'];
+    const escapeTriggers = [
+      '/start',
+      '/search',
+      '🔍 Найти мастера',
+      '📅 Мои записи',
+      '🔄 Сменить роль',
+      '👥 Сообщество',
+      '👤 Мой профиль',
+      '⚙️ Редактировать',
+      '📂 Открытые чаты',
+      '💵 Прайс-лист',
+      '🆘 Поддержка',
+      '📅 Календарь'
+    ];
     if (text && escapeTriggers.includes(text) && ctx.session && '__scene' in ctx.session) {
       delete ctx.session.__scene;
     }

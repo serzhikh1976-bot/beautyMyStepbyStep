@@ -65,20 +65,14 @@ export async function showMasterProfile(
     `💰 от ${raw.price_from} грн\n` +
     `${status}`;
 
-const photos = raw.photos as string[];
+  const photos = raw.photos as string[];
 
   if (photos && photos.length > 0) {
-    try {
-      await ctx.replyWithMediaGroup(
-        photos.map((fileId, i) => ({
-          type: 'photo' as const,
-          media: fileId,
-          ...(i === 0 ? { caption: text, parse_mode: 'HTML' as const } : {})
-        }))
-      );
-    } catch {
-      await ctx.reply(text, { parse_mode: 'HTML' });
-    }
+    const keyboard = new InlineKeyboard().text(
+      `🖼 Показать фото (${photos.length})`,
+      'show:photos'
+    );
+    await ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard.toJSON() });
   } else {
     await ctx.reply(text, { parse_mode: 'HTML' });
   }
@@ -90,6 +84,37 @@ export function registerProfileHandlers(
   record: BotRecord,
 ): void {
   // Кнопка «Мой профиль»
+  // Показ фото — только по явному запросу (см. showMasterProfile), чтобы не
+  // засорять историю чата (и вкладку «Медиа» в Telegram) дублями одних и тех
+  // же фото при каждом заходе в «Мой профиль»
+  bot.action("show:photos", async (ctx) => {
+    const telegramId = ctx.callbackQuery!.from.id;
+    await ctx.answerCallbackQuery();
+
+    const { data } = await db
+      .from("masters_profiles")
+      .select("photos")
+      .eq("master_id", telegramId)
+      .eq("bot_id", record.id)
+      .maybeSingle();
+
+    const photos = (data as { photos: string[] } | null)?.photos ?? [];
+
+    if (photos.length === 0) {
+      await ctx.reply("Фото пока не добавлены.");
+      return;
+    }
+
+    try {
+      await ctx.replyWithMediaGroup(
+        photos.map((fileId) => ({ type: "photo" as const, media: fileId })),
+      );
+    } catch (err) {
+      console.error(`[${record.city_name}] Ошибка отправки фото профиля:`, err);
+      await ctx.reply("⚠️ Не удалось загрузить фото.");
+    }
+  });
+
   bot.match("👤 Мой профиль", async (ctx) => {
     const telegramId =
       ctx.message && "from" in ctx.message ? ctx.message.from?.id : undefined;

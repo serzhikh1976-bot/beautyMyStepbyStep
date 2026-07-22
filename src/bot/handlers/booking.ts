@@ -2,6 +2,7 @@ import { InlineKeyboard } from 'ultra-telegram-framework';
 import type { TelegramBot, SceneContext } from 'ultra-telegram-framework';
 import { db, type BotRecord } from '../../db.js';
 import { escapeHtml } from '../../shared/telegram-html.js';
+import { clearButtons } from '../helpers.js';
 
 // Упрощение: фиксированный оффсет UTC+3 (лето по Киеву), без библиотеки
 // часовых поясов. Не подстраивается под переход на зимнее время — для
@@ -119,6 +120,18 @@ export function registerBookingHandlers(
   bot.action(/^book:/, async (ctx) => {
     const masterId = parseInt((ctx.callbackQuery!.data ?? '').replace('book:', ''));
     await ctx.answerCallbackQuery();
+
+    const { data: masterProfile } = await db
+      .from('masters_profiles')
+      .select('is_active')
+      .eq('master_id', masterId)
+      .eq('bot_id', record.id)
+      .maybeSingle();
+
+    if (!masterProfile || !(masterProfile as { is_active: boolean }).is_active) {
+      await ctx.reply('Мастер сейчас не принимает новых клиентов.');
+      return;
+    }
 
     const { data: settings } = await db
       .from('master_schedule_settings')
@@ -273,6 +286,7 @@ export function registerBookingHandlers(
 
   bot.action('book_cancel', async (ctx) => {
     await ctx.answerCallbackQuery('Отменено');
+    await clearButtons(bot, ctx);
   });
 
   // Шаг 5: финальное создание записи (с повторной проверкой на гонку)
@@ -283,6 +297,7 @@ export function registerBookingHandlers(
     const clientId = ctx.callbackQuery!.from.id;
 
     await ctx.answerCallbackQuery();
+    await clearButtons(bot, ctx);
 
     const { data: serviceRow } = await db
       .from('master_services')
@@ -300,6 +315,14 @@ export function registerBookingHandlers(
 
     const slotStart = new Date(isoStr);
     const slotEnd = new Date(slotStart.getTime() + svc.duration_minutes * 60 * 1000);
+
+    // Перепроверяем lead-time на случай если клиент завис на экране
+    // подтверждения — слот мог "протухнуть" (стать слишком близким к
+    // текущему моменту или вовсе уйти в прошлое) пока он думал
+    if (slotStart.getTime() < Date.now() + MIN_LEAD_MINUTES * 60 * 1000) {
+      await ctx.reply('😔 Это время уже прошло или почти наступило. Выберите другое через «📅 Записаться».');
+      return;
+    }
 
     // Повторно проверяем пересечение прямо перед вставкой — на случай если
     // кто-то другой забронировал этот же слот, пока клиент думал над подтверждением
@@ -328,7 +351,13 @@ export function registerBookingHandlers(
 
     if (error) {
       console.error(`[${record.city_name}] Ошибка создания записи:`, error.message);
-      await ctx.reply('❌ Не удалось создать запись. Попробуйте позже.');
+      if (error.code === '23P01') {
+        // exclusion_violation от констрейнта appointments_no_overlap —
+        // кто-то другой успел забронировать этот же слот буквально в момент вставки
+        await ctx.reply('😔 Это время уже заняли. Выберите другое через «📅 Записаться».');
+      } else {
+        await ctx.reply('❌ Не удалось создать запись. Попробуйте позже.');
+      }
       return;
     }
 
@@ -358,6 +387,128 @@ export function registerBookingHandlers(
       );
     } catch (err) {
       console.error(`[${record.city_name}] Ошибка уведомления мастера о записи:`, err);
+    }
+  });
+
+  // Отмена записи — общий хендлер для клиента и мастера. Кто именно нажал,
+  // определяем по совпадению telegram id с client_id/master_id самой записи,
+  // и уведомляем противоположную сторону.
+  bot.action(/^appt_cancel:/, async (ctx) => {
+    const id = (ctx.callbackQuery!.data ?? '').replace('appt_cancel:', '');
+    await ctx.answerCallbackQuery();
+    await clearButtons(bot, ctx);
+
+    const userId = ctx.callbackQuery!.from.id;
+
+    const { data } = await db
+      .from('appointments')
+      .select('id, master_id, client_id, slot_start, status, services(name)')
+      .eq('id', id)
+      .eq('bot_id', record.id)
+      .maybeSingle();
+
+    const appt = data as unknown as {
+      id: string; master_id: number; client_id: number; slot_start: string;
+      status: string; services: { name: string } | null;
+    } | null;
+
+    if (!appt || appt.status !== 'confirmed') {
+      await ctx.reply('Эта запись уже не активна.');
+      return;
+    }
+    if (appt.client_id !== userId && appt.master_id !== userId) {
+      await ctx.reply('Запись не найдена.');
+      return;
+    }
+
+    const slotStart = new Date(appt.slot_start);
+    const dateStr = new Date(slotStart.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    const keyboard = new InlineKeyboard()
+      .text('✅ Да, отменить', `appt_cancel_confirm:${appt.id}`)
+      .text('Нет', 'appt_cancel_no');
+
+    await ctx.reply(
+      `❌ <b>Отменить запись?</b>\n\n${escapeHtml(appt.services?.name ?? '—')}\n${formatDateLabel(dateStr)} в ${formatTimeLabel(slotStart)}`,
+      { parse_mode: 'HTML', reply_markup: keyboard.toJSON() }
+    );
+  });
+
+  bot.action('appt_cancel_no', async (ctx) => {
+    await ctx.answerCallbackQuery('Оставлено без изменений');
+    await clearButtons(bot, ctx);
+  });
+
+  bot.action(/^appt_cancel_confirm:/, async (ctx) => {
+    const id = (ctx.callbackQuery!.data ?? '').replace('appt_cancel_confirm:', '');
+    await ctx.answerCallbackQuery();
+    await clearButtons(bot, ctx);
+
+    const userId = ctx.callbackQuery!.from.id;
+
+    const { data } = await db
+      .from('appointments')
+      .select('id, master_id, client_id, slot_start, status, services(name)')
+      .eq('id', id)
+      .eq('bot_id', record.id)
+      .maybeSingle();
+
+    const appt = data as unknown as {
+      id: string; master_id: number; client_id: number; slot_start: string;
+      status: string; services: { name: string } | null;
+    } | null;
+
+    if (!appt || appt.status !== 'confirmed') {
+      await ctx.reply('Эта запись уже не активна.');
+      return;
+    }
+    if (appt.client_id !== userId && appt.master_id !== userId) {
+      await ctx.reply('Запись не найдена.');
+      return;
+    }
+
+    // .eq('status', 'confirmed') в самом update — на случай если обе стороны
+    // умудрились одновременно отменить одну и ту же запись
+    const { error } = await db
+      .from('appointments')
+      .update({ status: 'cancelled' })
+      .eq('id', appt.id)
+      .eq('status', 'confirmed');
+
+    if (error) {
+      console.error(`[${record.city_name}] Ошибка отмены записи:`, error.message);
+      await ctx.reply('❌ Не удалось отменить запись. Попробуйте позже.');
+      return;
+    }
+
+    const slotStart = new Date(appt.slot_start);
+    const dateStr = new Date(slotStart.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const serviceName = appt.services?.name ?? '—';
+    const isClient = userId === appt.client_id;
+    const otherPartyId = isClient ? appt.master_id : appt.client_id;
+
+    await ctx.reply(
+      `✅ Запись отменена.\n\n${escapeHtml(serviceName)}\n${formatDateLabel(dateStr)} в ${formatTimeLabel(slotStart)}`
+    );
+
+    try {
+      let actorName = isClient ? 'Клиент' : 'Мастер';
+      try {
+        const actorChat = await bot.getChat(userId);
+        if (actorChat.first_name) actorName = actorChat.first_name;
+      } catch {
+        // не критично
+      }
+
+      await bot.sendMessage(
+        otherPartyId,
+        `❌ <b>${escapeHtml(actorName)} отменил(а) запись</b>\n\n` +
+          `${escapeHtml(serviceName)}\n` +
+          `${formatDateLabel(dateStr)} в ${formatTimeLabel(slotStart)}`,
+        { parse_mode: 'HTML' }
+      );
+    } catch (err) {
+      console.error(`[${record.city_name}] Ошибка уведомления об отмене записи:`, err);
     }
   });
 }

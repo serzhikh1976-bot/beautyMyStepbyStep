@@ -1,3 +1,4 @@
+import { InlineKeyboard } from 'ultra-telegram-framework';
 import type { TelegramBot, SceneContext } from 'ultra-telegram-framework';
 import { db, type BotRecord } from '../../db.js';
 import { escapeHtml } from '../../shared/telegram-html.js';
@@ -28,6 +29,7 @@ export function registerMyAppointmentsHandlers(
     }
 
     let text = '📅 <b>Ваши предстоящие записи</b>\n\n';
+    const keyboard = new InlineKeyboard();
     for (const r of rows) {
       const { data: masterProfile } = await db
         .from('masters_profiles')
@@ -44,8 +46,9 @@ export function registerMyAppointmentsHandlers(
       const timeLabel = `${String(kyiv.getUTCHours()).padStart(2, '0')}:${String(kyiv.getUTCMinutes()).padStart(2, '0')}`;
 
       text += `🗓 ${dateLabel} в ${timeLabel} — ${escapeHtml(masterName)}, ${escapeHtml(r.services?.name ?? '—')}\n`;
+      keyboard.text(`❌ Отменить ${dateLabel} ${timeLabel}`, `appt_cancel:${r.id}`).row();
     }
 
-    await ctx.reply(text, { parse_mode: 'HTML' });
+    await ctx.reply(text, { parse_mode: 'HTML', reply_markup: keyboard.toJSON() });
   });
 }
